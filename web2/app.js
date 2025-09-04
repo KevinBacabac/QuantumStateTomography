@@ -75,18 +75,64 @@ export class QmlDemo extends LitElement {
         }
     }
 
-    handleStart() {
+    async handleStart() {
         this.loading = true;
         this.error = '';
+        this.currentData = null;
         const key = `${this.circDepth}_${this.numQubits}`;
+
         if (qmlData[key]) {
             this.currentData = qmlData[key];
             this.iteration = 0;
             this.loading = false;
         } else {
-            this.currentData = null;
-            this.error = 'No pre-cached data available for these parameters.';
-            this.loading = false;
+            // Fallback to backend
+            const POST_DOMAIN = 'http://quantumstatetomography.sharankov.com:81/';
+            const args = {
+                circ_depth: this.circDepth,
+                num_qbits: this.numQubits,
+            };
+
+            try {
+                const response = await fetch(POST_DOMAIN + 'qml', {
+                    method: 'POST',
+                    body: JSON.stringify(args)
+                });
+                const reply = await response.json();
+
+                if (reply === 'Error') {
+                    throw new Error('Backend returned an error.');
+                }
+
+                // The backend response doesn't have the complex numbers parsed,
+                // but our static data does for simplicity. The `loadQubits` function
+                // expects parsed data, so we parse it here. The `parseComplex` in the
+                // original repo was different from the one I wrote. I need to use the one from the old repo.
+                // Let's check my `parseComplex` again. It seems to do the job.
+                // The backend response is a JSON object with `phis` as an array of objects,
+                // where values are 2-element arrays. My `parseComplex` expects this.
+                // The static data in `data.js` also has this format.
+                // The `loadQubits` function expects `Complex` objects.
+                // My `updated` function calls `parseComplex` before `loadQubits`. So this should be fine.
+                // I'll just set `this.currentData` to the raw reply, and `updated` will handle the parsing.
+                // The issue is that `parseComplex` is called inside `updated`, but `updated` is triggered by a property change.
+                // I need to parse the data before setting it.
+
+                // Let's re-read my `updated` method:
+                // if (changedProperties.has('iteration') || changedProperties.has('visual') || changedProperties.has('currentData')) {
+                //     const parsedData = parseComplex(this.currentData);
+                //     loadQubits(parsedData, this.iteration, this.visual);
+                // }
+                // This is correct. I set `this.currentData` and the `updated` hook will parse it.
+
+                this.currentData = reply;
+                this.iteration = 0;
+                this.loading = false;
+            } catch (err) {
+                console.error(err);
+                this.error = 'Failed to fetch data from backend.';
+                this.loading = false;
+            }
         }
     }
 
@@ -188,10 +234,10 @@ export class QubitDisplay extends LitElement {
                 ${this.image ? html`<img src="data:image/png;base64,${this.image}" alt="Bloch Sphere">` : html`<div style="width: 150px; height: 150px; border: 1px dashed white; display: flex; align-items: center; justify-content: center;">No Image</div>`}
                 <form @submit=${this.handleSubmit}>
                     <div class="inputs">
-                        <sl-input type="number" name="r0" label="Real |0>" .value=${this.qubitState.r0}></sl-input>
-                        <sl-input type="number" name="i0" label="Imaginary |0>" .value=${this.qubitState.i0}></sl-input>
-                        <sl-input type="number" name="r1" label="Real |1>" .value=${this.qubitState.r1}></sl-input>
-                        <sl-input type="number" name="i1" label="Imaginary |1>" .value=${this.qubitState.i1}></sl-input>
+                        <sl-input type="number" step="any" name="r0" label="Real |0>" .value=${this.qubitState.r0}></sl-input>
+                        <sl-input type="number" step="any" name="i0" label="Imaginary |0>" .value=${this.qubitState.i0}></sl-input>
+                        <sl-input type="number" step="any" name="r1" label="Real |1>" .value=${this.qubitState.r1}></sl-input>
+                        <sl-input type="number" step="any" name="i1" label="Imaginary |1>" .value=${this.qubitState.i1}></sl-input>
                     </div>
                     <div class="actions">
                         <sl-button @click=${this.handleNormalize} size="small">Normalize</sl-button>
