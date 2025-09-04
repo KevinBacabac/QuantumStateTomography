@@ -188,10 +188,10 @@ export class QubitDisplay extends LitElement {
                 ${this.image ? html`<img src="data:image/png;base64,${this.image}" alt="Bloch Sphere">` : html`<div style="width: 150px; height: 150px; border: 1px dashed white; display: flex; align-items: center; justify-content: center;">No Image</div>`}
                 <form @submit=${this.handleSubmit}>
                     <div class="inputs">
-                        <sl-input type="number" step="0.01" name="r0" label="Real |0>" .value=${this.qubitState.r0}></sl-input>
-                        <sl-input type="number" step="0.01" name="i0" label="Imaginary |0>" .value=${this.qubitState.i0}></sl-input>
-                        <sl-input type="number" step="0.01" name="r1" label="Real |1>" .value=${this.qubitState.r1}></sl-input>
-                        <sl-input type="number" step="0.01" name="i1" label="Imaginary |1>" .value=${this.qubitState.i1}></sl-input>
+                        <sl-input type="number" name="r0" label="Real |0>" .value=${this.qubitState.r0}></sl-input>
+                        <sl-input type="number" name="i0" label="Imaginary |0>" .value=${this.qubitState.i0}></sl-input>
+                        <sl-input type="number" name="r1" label="Real |1>" .value=${this.qubitState.r1}></sl-input>
+                        <sl-input type="number" name="i1" label="Imaginary |1>" .value=${this.qubitState.i1}></sl-input>
                     </div>
                     <div class="actions">
                         <sl-button @click=${this.handleNormalize} size="small">Normalize</sl-button>
@@ -307,6 +307,12 @@ export class QuantumApp extends LitElement {
       <sl-card>
         <div slot="header">Quantum Machine Learning Demo</div>
         <qml-demo></qml-demo>
+      </sl-card>
+
+      <sl-card>
+        <div slot="header">Why Quantum?</div>
+        <p>Quantum computers can solve problems classical computers could never come close to simulating. Simulating protein folding would allow for modelling drugs and disease; potentially opening up a cure to cancer in the far future. Similarly, the ability to model complex molecules and lattices will dramatically advance material science leading to a world of smart materials and prolific nanotechnology.</p>
+        <p>The first step to making a quantum computer is measuring, understanding, and predicting quantum states. Only through quantum state tomagraphy can we begin designing computers using the power of light or atoms.</p>
       </sl-card>
     `;
     }
