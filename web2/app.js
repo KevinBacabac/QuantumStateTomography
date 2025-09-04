@@ -1,5 +1,4 @@
 import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@2/core/lit-core.min.js';
-import { customElement, property, state, query } from 'https://cdn.jsdelivr.net/gh/lit/dist@2/decorators.js';
 import { qmlData } from './data.js';
 import { draw, loadQubits, CANVAS_SIZE } from './lib/QMLCanvas.js';
 
@@ -9,6 +8,7 @@ function parseComplex(data) {
     complexData.phis = data.phis.map(state => {
         const newState = {};
         for (const [key, value] of Object.entries(state)) {
+            // Complex is global from CDN
             newState[key] = new Complex(value[0], value[1]);
         }
         return newState;
@@ -16,8 +16,6 @@ function parseComplex(data) {
     return complexData;
 }
 
-
-@customElement('qml-demo')
 export class QmlDemo extends LitElement {
     static styles = css`
     :host {
@@ -41,15 +39,30 @@ export class QmlDemo extends LitElement {
     }
   `;
 
-    @state() circDepth = 10;
-    @state() numQubits = 5;
-    @state() iteration = 0;
-    @state() visual = 'Line';
-    @state() currentData = null;
-    @state() loading = false;
-    @state() error = '';
+    static properties = {
+      circDepth: { state: true },
+      numQubits: { state: true },
+      iteration: { state: true },
+      visual: { state: true },
+      currentData: { state: true },
+      loading: { state: true },
+      error: { state: true },
+    };
 
-    @query('#qml-canvas') canvasEl;
+    constructor() {
+        super();
+        this.circDepth = 10;
+        this.numQubits = 5;
+        this.iteration = 0;
+        this.visual = 'Line';
+        this.currentData = null;
+        this.loading = false;
+        this.error = '';
+    }
+
+    get canvasEl() {
+        return this.renderRoot?.querySelector('#qml-canvas') ?? null;
+    }
 
     updated(changedProperties) {
         if (this.currentData && this.canvasEl) {
@@ -82,10 +95,10 @@ export class QmlDemo extends LitElement {
         return html`
       <p>Press start to load pre-cached data for a random quantum state visualization.</p>
       <div class="controls">
-        <sl-range label="Circuit Depth" min="1" max="10" value=${this.circDepth} @sl-change=${e => this.circDepth = e.target.value}></sl-range>
-        <sl-range label="Number of Qubits" min="1" max="6" value=${this.numQubits} @sl-change=${e => this.numQubits = e.target.value}></sl-range>
+        <sl-range label="Circuit Depth" min="1" max="10" .value=${this.circDepth} @sl-change=${e => this.circDepth = e.target.value}></sl-range>
+        <sl-range label="Number of Qubits" min="1" max="6" .value=${this.numQubits} @sl-change=${e => this.numQubits = e.target.value}></sl-range>
         <sl-button @click=${this.handleStart} .loading=${this.loading}>START</sl-button>
-        <sl-select label="Visual" value=${this.visual} @sl-change=${e => this.visual = e.target.value}>
+        <sl-select label="Visual" .value=${this.visual} @sl-change=${e => this.visual = e.target.value}>
           <sl-option value="Line">Line</sl-option>
           <sl-option value="Trail">Trail</sl-option>
         </sl-select>
@@ -93,13 +106,14 @@ export class QmlDemo extends LitElement {
       ${this.error ? html`<p class="error">${this.error}</p>` : ''}
       <canvas id="qml-canvas" width=${CANVAS_SIZE} height=${CANVAS_SIZE}></canvas>
       ${this.currentData ? html`
-        <sl-range label="Iteration" min="0" max=${maxIterations} value=${this.iteration} @sl-change=${e => this.iteration = e.target.value}></sl-range>
+        <sl-range label="Iteration" min="0" max=${maxIterations} .value=${this.iteration} @sl-change=${e => this.iteration = e.target.value}></sl-range>
       ` : ''}
     `;
     }
 }
+customElements.define('qml-demo', QmlDemo);
 
-@customElement('qubit-display')
+
 export class QubitDisplay extends LitElement {
     static styles = css`
         :host { display: block; margin-bottom: 1rem; }
@@ -109,9 +123,18 @@ export class QubitDisplay extends LitElement {
         .actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
     `;
 
-    @property({ type: Number }) id = 0;
-    @property({ type: Object }) qubitState = { r0: '1', i0: '0', r1: '0', i1: '0' };
-    @property({ type: String }) image = null;
+    static properties = {
+      id: { type: Number },
+      qubitState: { type: Object },
+      image: { type: String },
+    };
+
+    constructor() {
+        super();
+        this.id = 0;
+        this.qubitState = { r0: '1', i0: '0', r1: '0', i1: '0' };
+        this.image = null;
+    }
 
     handleSubmit(e) {
         e.preventDefault();
@@ -126,10 +149,10 @@ export class QubitDisplay extends LitElement {
     }
 
     handleNormalize() {
-        const r0_input = this.shadowRoot.querySelector('[name="r0"]');
-        const i0_input = this.shadowRoot.querySelector('[name="i0"]');
-        const r1_input = this.shadowRoot.querySelector('[name="r1"]');
-        const i1_input = this.shadowRoot.querySelector('[name="i1"]');
+        const r0_input = this.renderRoot.querySelector('[name="r0"]');
+        const i0_input = this.renderRoot.querySelector('[name="i0"]');
+        const r1_input = this.renderRoot.querySelector('[name="r1"]');
+        const i1_input = this.renderRoot.querySelector('[name="i1"]');
 
         const r0 = parseFloat(r0_input.value);
         const i0 = parseFloat(i0_input.value);
@@ -149,6 +172,7 @@ export class QubitDisplay extends LitElement {
         r1_input.value = new_r1;
         i1_input.value = new_i1;
 
+        // Also update the state so a re-render doesn't lose the value
         this.qubitState = {
             r0: new_r0,
             i0: new_i0,
@@ -164,10 +188,10 @@ export class QubitDisplay extends LitElement {
                 ${this.image ? html`<img src="data:image/png;base64,${this.image}" alt="Bloch Sphere">` : html`<div style="width: 150px; height: 150px; border: 1px dashed white; display: flex; align-items: center; justify-content: center;">No Image</div>`}
                 <form @submit=${this.handleSubmit}>
                     <div class="inputs">
-                        <sl-input type="number" step="0.01" name="r0" label="Real |0>" value=${this.qubitState.r0}></sl-input>
-                        <sl-input type="number" step="0.01" name="i0" label="Imaginary |0>" value=${this.qubitState.i0}></sl-input>
-                        <sl-input type="number" step="0.01" name="r1" label="Real |1>" value=${this.qubitState.r1}></sl-input>
-                        <sl-input type="number" step="0.01" name="i1" label="Imaginary |1>" value=${this.qubitState.i1}></sl-input>
+                        <sl-input type="number" step="0.01" name="r0" label="Real |0>" .value=${this.qubitState.r0}></sl-input>
+                        <sl-input type="number" step="0.01" name="i0" label="Imaginary |0>" .value=${this.qubitState.i0}></sl-input>
+                        <sl-input type="number" step="0.01" name="r1" label="Real |1>" .value=${this.qubitState.r1}></sl-input>
+                        <sl-input type="number" step="0.01" name="i1" label="Imaginary |1>" .value=${this.qubitState.i1}></sl-input>
                     </div>
                     <div class="actions">
                         <sl-button @click=${this.handleNormalize} size="small">Normalize</sl-button>
@@ -178,15 +202,24 @@ export class QubitDisplay extends LitElement {
         `;
     }
 }
+customElements.define('qubit-display', QubitDisplay);
 
-@customElement('qubit-visualizer')
+
 export class QubitVisualizer extends LitElement {
     static styles = css`
         .controls { display: flex; gap: 1rem; align-items: flex-end; margin-bottom: 1rem; }
     `;
 
-    @state() quantity = 1;
-    @state() managers = [{ id: 1, image: null }];
+    static properties = {
+      quantity: { state: true },
+      managers: { state: true },
+    };
+
+    constructor() {
+        super();
+        this.quantity = 1;
+        this.managers = [{ id: 1, image: null }];
+    }
 
     handleQuantityChange(e) {
         const newQuantity = Math.max(1, parseInt(e.target.value, 10));
@@ -202,8 +235,8 @@ export class QubitVisualizer extends LitElement {
 
     async handleQubitSubmit(e) {
         const { id, data } = e.detail;
-        const manager = this.managers.find(m => m.id === id);
-        if (!manager) return;
+        const managerIndex = this.managers.findIndex(m => m.id === id);
+        if (managerIndex === -1) return;
 
         const POST_DOMAIN = 'http://quantumstatetomography.sharankov.com:81/';
         try {
@@ -216,8 +249,10 @@ export class QubitVisualizer extends LitElement {
             reader.readAsDataURL(imgResponse);
             reader.onloadend = () => {
                 const base64data = reader.result.split(',')[1];
-                manager.image = base64data;
-                this.requestUpdate();
+
+                const newManagers = [...this.managers];
+                newManagers[managerIndex] = { ...newManagers[managerIndex], image: base64data };
+                this.managers = newManagers;
             };
         } catch (error) {
             console.error('Error fetching qubit image:', error);
@@ -227,7 +262,7 @@ export class QubitVisualizer extends LitElement {
     render() {
         return html`
             <div class="controls">
-                <sl-input type="number" label="Number of Qubits" min="1" value=${this.quantity} @sl-change=${this.handleQuantityChange}></sl-input>
+                <sl-input type="number" label="Number of Qubits" min="1" .value=${this.quantity} @sl-change=${this.handleQuantityChange}></sl-input>
             </div>
             <div @qubit-submit=${this.handleQubitSubmit}>
                 ${this.managers.map(manager => html`
@@ -237,8 +272,9 @@ export class QubitVisualizer extends LitElement {
         `;
     }
 }
+customElements.define('qubit-visualizer', QubitVisualizer);
 
-@customElement('quantum-app')
+
 export class QuantumApp extends LitElement {
     static styles = css`
     :host {
@@ -275,3 +311,4 @@ export class QuantumApp extends LitElement {
     `;
     }
 }
+customElements.define('quantum-app', QuantumApp);
