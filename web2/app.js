@@ -8,7 +8,6 @@ function parseComplex(data) {
     complexData.phis = data.phis.map(state => {
         const newState = {};
         for (const [key, value] of Object.entries(state)) {
-            // Complex is global from CDN
             newState[key] = new Complex(value[0], value[1]);
         }
         return newState;
@@ -44,7 +43,7 @@ export class QmlDemo extends LitElement {
       numQubits: { state: true },
       iteration: { state: true },
       visual: { state: true },
-      currentData: { state: true },
+      currentData: { state: true }, // This will now hold PARSED data
       loading: { state: true },
       error: { state: true },
     };
@@ -66,10 +65,7 @@ export class QmlDemo extends LitElement {
 
     updated(changedProperties) {
         if (this.currentData && this.canvasEl) {
-            if (changedProperties.has('iteration') || changedProperties.has('visual') || changedProperties.has('currentData')) {
-                const parsedData = parseComplex(this.currentData);
-                loadQubits(parsedData, this.iteration, this.visual);
-            }
+            loadQubits(this.currentData, this.iteration, this.visual);
             const ctx = this.canvasEl.getContext('2d');
             draw(ctx);
         }
@@ -80,11 +76,10 @@ export class QmlDemo extends LitElement {
         this.error = '';
         this.currentData = null;
         const key = `${this.circDepth}_${this.numQubits}`;
+        let rawData = null;
 
         if (qmlData[key]) {
-            this.currentData = qmlData[key];
-            this.iteration = 0;
-            this.loading = false;
+            rawData = qmlData[key];
         } else {
             // Fallback to backend
             const POST_DOMAIN = 'http://quantumstatetomography.sharankov.com:81/';
@@ -98,48 +93,38 @@ export class QmlDemo extends LitElement {
                     method: 'POST',
                     body: JSON.stringify(args)
                 });
-                const reply = await response.json();
-
-                if (reply === 'Error') {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                rawData = await response.json();
+                if (rawData === 'Error') {
                     throw new Error('Backend returned an error.');
                 }
-
-                // The backend response doesn't have the complex numbers parsed,
-                // but our static data does for simplicity. The `loadQubits` function
-                // expects parsed data, so we parse it here. The `parseComplex` in the
-                // original repo was different from the one I wrote. I need to use the one from the old repo.
-                // Let's check my `parseComplex` again. It seems to do the job.
-                // The backend response is a JSON object with `phis` as an array of objects,
-                // where values are 2-element arrays. My `parseComplex` expects this.
-                // The static data in `data.js` also has this format.
-                // The `loadQubits` function expects `Complex` objects.
-                // My `updated` function calls `parseComplex` before `loadQubits`. So this should be fine.
-                // I'll just set `this.currentData` to the raw reply, and `updated` will handle the parsing.
-                // The issue is that `parseComplex` is called inside `updated`, but `updated` is triggered by a property change.
-                // I need to parse the data before setting it.
-
-                // Let's re-read my `updated` method:
-                // if (changedProperties.has('iteration') || changedProperties.has('visual') || changedProperties.has('currentData')) {
-                //     const parsedData = parseComplex(this.currentData);
-                //     loadQubits(parsedData, this.iteration, this.visual);
-                // }
-                // This is correct. I set `this.currentData` and the `updated` hook will parse it.
-
-                this.currentData = reply;
-                this.iteration = 0;
-                this.loading = false;
             } catch (err) {
                 console.error(err);
                 this.error = 'Failed to fetch data from backend.';
                 this.loading = false;
+                return;
             }
         }
+
+        if (rawData) {
+            try {
+                this.currentData = parseComplex(rawData);
+                this.iteration = 0;
+            } catch (err) {
+                console.error("Error parsing data:", err);
+                this.error = "Failed to parse data.";
+            }
+        }
+
+        this.loading = false;
     }
 
     render() {
         const maxIterations = this.currentData ? this.currentData.phis.length - 1 : 0;
         return html`
-      <p>Press start to load pre-cached data for a random quantum state visualization.</p>
+      <p>Press start to load pre-cached data for a random quantum state visualization. If data is not cached, it will be fetched from the backend.</p>
       <div class="controls">
         <sl-range label="Circuit Depth" min="1" max="10" .value=${this.circDepth} @sl-change=${e => this.circDepth = e.target.value}></sl-range>
         <sl-range label="Number of Qubits" min="1" max="6" .value=${this.numQubits} @sl-change=${e => this.numQubits = e.target.value}></sl-range>
@@ -163,10 +148,11 @@ customElements.define('qml-demo', QmlDemo);
 export class QubitDisplay extends LitElement {
     static styles = css`
         :host { display: block; margin-bottom: 1rem; }
-        .qubit-form { display: flex; gap: 1rem; align-items: flex-end; }
+        .qubit-form { display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap; }
         img { width: 150px; height: 150px; border: 1px solid white; }
         .inputs { display: flex; flex-direction: column; gap: 0.5rem; }
         .actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+        .equation { margin-left: 1rem; font-family: monospace; font-size: 1.2rem; }
     `;
 
     static properties = {
@@ -180,6 +166,24 @@ export class QubitDisplay extends LitElement {
         this.id = 0;
         this.qubitState = { r0: '1', i0: '0', r1: '0', i1: '0' };
         this.image = null;
+    }
+
+    get equation() {
+        const r0 = this.renderRoot.querySelector('[name="r0"]')?.value || '0';
+        const i0 = this.renderRoot.querySelector('[name="i0"]')?.value || '0';
+        const r1 = this.renderRoot.querySelector('[name="r1"]')?.value || '0';
+        const i1 = this.renderRoot.querySelector('[name="i1"]')?.value || '0';
+
+        const c0 = new Complex(parseFloat(r0), parseFloat(i0));
+        const c1 = new Complex(parseFloat(r1), parseFloat(i1));
+
+        const formatPart = (c) => {
+            if (c.im === 0) return `${c.re}`;
+            if (c.re === 0) return `${c.im}i`;
+            return `${c.re} ${c.im > 0 ? '+' : '-'} ${Math.abs(c.im)}i`;
+        };
+
+        return `(${formatPart(c0)})|0> + (${formatPart(c1)})|1>`;
     }
 
     handleSubmit(e) {
@@ -218,13 +222,13 @@ export class QubitDisplay extends LitElement {
         r1_input.value = new_r1;
         i1_input.value = new_i1;
 
-        // Also update the state so a re-render doesn't lose the value
-        this.qubitState = {
-            r0: new_r0,
-            i0: new_i0,
-            r1: new_r1,
-            i1: new_i1,
-        };
+        this.qubitState = { r0: new_r0, i0: new_i0, r1: new_r1, i1: new_i1 };
+        this.requestUpdate('equation'); // To re-render the equation
+    }
+
+    // We need to re-render the equation whenever an input changes
+    handleInputChange() {
+        this.requestUpdate('equation');
     }
 
     render() {
@@ -233,7 +237,7 @@ export class QubitDisplay extends LitElement {
             <div class="qubit-form">
                 ${this.image ? html`<img src="data:image/png;base64,${this.image}" alt="Bloch Sphere">` : html`<div style="width: 150px; height: 150px; border: 1px dashed white; display: flex; align-items: center; justify-content: center;">No Image</div>`}
                 <form @submit=${this.handleSubmit}>
-                    <div class="inputs">
+                    <div class="inputs" @input=${this.handleInputChange}>
                         <sl-input type="number" step="any" name="r0" label="Real |0>" .value=${this.qubitState.r0}></sl-input>
                         <sl-input type="number" step="any" name="i0" label="Imaginary |0>" .value=${this.qubitState.i0}></sl-input>
                         <sl-input type="number" step="any" name="r1" label="Real |1>" .value=${this.qubitState.r1}></sl-input>
@@ -244,6 +248,9 @@ export class QubitDisplay extends LitElement {
                         <sl-button type="submit" variant="primary" size="small">Submit</sl-button>
                     </div>
                 </form>
+                <div class="equation">
+                    <h3>${this.equation}</h3>
+                </div>
             </div>
         `;
     }
@@ -290,16 +297,20 @@ export class QubitVisualizer extends LitElement {
                 method: 'POST',
                 body: JSON.stringify(data)
             });
-            const imgResponse = await response.blob();
-            const reader = new FileReader();
-            reader.readAsDataURL(imgResponse);
-            reader.onloadend = () => {
-                const base64data = reader.result.split(',')[1];
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            // Assuming the backend returns a JSON object with a base64 image string.
+            const reply = await response.json();
+            const base64data = reply.image;
 
-                const newManagers = [...this.managers];
-                newManagers[managerIndex] = { ...newManagers[managerIndex], image: base64data };
-                this.managers = newManagers;
-            };
+            if (!base64data) {
+                throw new Error("No image data in backend response.");
+            }
+
+            const newManagers = [...this.managers];
+            newManagers[managerIndex] = { ...newManagers[managerIndex], image: base64data };
+            this.managers = newManagers;
         } catch (error) {
             console.error('Error fetching qubit image:', error);
         }
